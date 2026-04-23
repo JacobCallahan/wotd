@@ -1,0 +1,25 @@
+[project]
+name = "wotd"
+version = "0.1.0"
+description = "Learn every day"
+readme = "README.md"
+authors = [
+    { name = "Jacob Callahan", email = "jacob.callahan05@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "click>=8.3.0",
+    "rich>=14.1.0",
+    "rich-click>=1.9.2",
+]
+
+[project.scripts]
+wotd = "wotd.cli:main"
+
+[project.entry-points."wotd.languages"]
+en = "wotd.languages.english:get_provider"
+ja = "wotd.languages.japanese:get_provider"
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
