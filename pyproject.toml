@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Jacob Callahan", email = "jacob.callahan05@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "click>=8.3.0",
     "rich>=14.1.0",
