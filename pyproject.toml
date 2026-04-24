@@ -1,6 +1,6 @@
 [project]
 name = "wotd"
-version = "0.1.0"
+version = "0.2.0"
 description = "Learn every day"
 readme = "README.md"
 authors = [
