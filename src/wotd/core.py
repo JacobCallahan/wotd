@@ -1,7 +1,7 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from html import unescape
 from importlib.metadata import entry_points
-from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -44,8 +44,10 @@ class SourceRequest:
 class LanguageProvider:
     language: str
     source: str
-    request: SourceRequest
-    parse: Callable[[bytes], "WordEntry"]
+    build_request: Callable[[str | None], SourceRequest]
+    parse: Callable[[bytes, str | None], "WordEntry"]
+    variants: tuple[str, ...] = ()
+    default_variant: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ class WordEntry:
     source: str
     definitions: list[str] = field(default_factory=list)
     description: str = ""
+    description_label: str = "Description"
     facts: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -95,7 +98,13 @@ def load_language_providers():
 
 
 def get_registered_language_codes():
-    return sorted(entry_point.name for entry_point in entry_points(group=ENTRY_POINT_GROUP))
+    providers = load_language_providers()
+    codes = []
+    for provider in providers.values():
+        codes.append(provider.language)
+        for variant in provider.variants:
+            codes.append(f"{provider.language}-{variant}")
+    return sorted(set(codes))
 
 
 def get_language_provider(language):
@@ -105,11 +114,23 @@ def get_language_provider(language):
 
     providers = load_language_providers()
     provider = providers.get(normalized)
-    if provider is None:
-        available = ", ".join(sorted(providers))
+    if provider is not None:
+        return provider, normalized, provider.default_variant
+
+    base_language, separator, variant = normalized.partition("-")
+    provider = providers.get(base_language)
+    if provider is not None and separator:
+        if variant in provider.variants:
+            return provider, normalized, variant
+
+        available = ", ".join(get_registered_language_codes())
         raise WOTDError(f"Unsupported language '{language}'. Available languages: {available}.")
 
-    return provider
+    if provider is None:
+        available = ", ".join(get_registered_language_codes())
+        raise WOTDError(f"Unsupported language '{language}'. Available languages: {available}.")
+
+    return provider, normalized, provider.default_variant
 
 
 def render_entry(entry):
@@ -136,7 +157,7 @@ def render_entry(entry):
 
     if entry.description:
         body.add_row("")
-        body.add_row(Text("Description", style="key"))
+        body.add_row(Text(entry.description_label, style="key"))
         body.add_row(entry.description)
 
     console.print()
@@ -153,7 +174,7 @@ def render_entry(entry):
 
 
 def display_language(language):
-    provider = get_language_provider(language)
-    source_bytes = fetch_source(provider.request)
-    entry = provider.parse(source_bytes)
+    provider, _, variant = get_language_provider(language)
+    source_bytes = fetch_source(provider.build_request(variant))
+    entry = provider.parse(source_bytes, variant)
     render_entry(entry)

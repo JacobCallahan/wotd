@@ -13,7 +13,10 @@ A small packaged CLI for fetching and displaying a word of the day from pluggabl
 | Code | Source |
 | --- | --- |
 | `en` | Merriam-Webster |
-| `ja` | Innovative Language |
+| `en-hard` | Wordsmith.org |
+| `en-idiom` | EnglishClub |
+| `ja` | Kanji of the Day (`ja` defaults to `ja-n5`) |
+| `ja-n1` to `ja-n5` | Kanji of the Day JLPT feeds |
 
 ## Install and run
 
@@ -24,41 +27,18 @@ uv tool install wotd
 
 wotd
 wotd en
+wotd en-hard
+wotd en-idiom
 wotd ja
+wotd ja-n3
 ```
 
 Use the built-in help to see the currently registered language codes:
 
 ```bash
-uv run wotd --help
+wotd --help
 ```
 
-## Project layout
+## Contributing
 
-```text
-src/wotd/
-  cli.py                 # CLI entrypoint
-  core.py                # shared fetching, rendering, and provider discovery
-  languages/
-    english.py           # English provider
-    japanese.py          # Japanese provider
-```
-
-## Entry-point based languages
-
-Language providers are registered through the `wotd.languages` entry-point group in `pyproject.toml`.
-
-```toml
-[project.entry-points."wotd.languages"]
-en = "wotd.languages.english:get_provider"
-ja = "wotd.languages.japanese:get_provider"
-```
-
-Each provider returns a `LanguageProvider` that defines:
-
-- the language code
-- the source attribution text
-- the request details
-- the parse function that converts raw bytes into a `WordEntry`
-
-For contributor guidance, see `src/wotd/languages/README.md`.
+Contributor-facing implementation details, project layout, and extension guidance live in `CONTRIBUTING.md`.

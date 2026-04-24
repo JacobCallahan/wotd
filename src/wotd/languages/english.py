@@ -3,7 +3,9 @@ import xml.etree.ElementTree as ET
 
 from wotd.core import LanguageProvider, SourceRequest, WOTDError, WordEntry, clean_text
 
+CONTENT_NAMESPACE = {"content": "http://purl.org/rss/1.0/modules/content/"}
 MERRIAM_NAMESPACE = {"merriam": "https://www.merriam-webster.com/word-of-the-day"}
+ENGLISH_VARIANTS = ("hard", "idiom")
 
 
 class DescriptionParagraphParser(HTMLParser):
@@ -38,16 +40,68 @@ class DescriptionParagraphParser(HTMLParser):
         self._flush()
 
 
+class StructuredParagraphParser(HTMLParser):
+    """Collect paragraph text while preserving line breaks created by <br>."""
+
+    def __init__(self):
+        super().__init__()
+        self.paragraphs = []
+        self._current = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "p":
+            self._flush()
+        elif tag == "br":
+            self._current.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag == "p":
+            self._flush()
+
+    def handle_data(self, data):
+        self._current.append(data)
+
+    def _flush(self):
+        text = "".join(self._current)
+        cleaned_lines = [clean_text(line) for line in text.splitlines()]
+        cleaned_lines = [line for line in cleaned_lines if line]
+        if cleaned_lines:
+            self.paragraphs.append(cleaned_lines)
+        self._current.clear()
+
+    def close(self):
+        super().close()
+        self._flush()
+
+
 def get_provider():
     return LanguageProvider(
         language="en",
         source="Merriam-Webster",
-        request=SourceRequest(url="https://www.merriam-webster.com/wotd/feed/rss2"),
+        build_request=build_request,
         parse=parse_latest_item,
+        variants=ENGLISH_VARIANTS,
     )
 
 
-def parse_latest_item(feed_bytes):
+def build_request(variant):
+    if variant == "hard":
+        return SourceRequest(url="https://wordsmith.org/awad/rss1.xml")
+    if variant == "idiom":
+        return SourceRequest(url="https://www.englishclub.com/ref/idiom-of-the-day.xml")
+    return SourceRequest(url="https://www.merriam-webster.com/wotd/feed/rss2")
+
+
+def parse_latest_item(feed_bytes, variant):
+    if variant == "hard":
+        return parse_wordsmith_item(feed_bytes)
+    if variant == "idiom":
+        return parse_idiom_item(feed_bytes)
+
+    return parse_merriam_item(feed_bytes)
+
+
+def parse_merriam_item(feed_bytes):
     try:
         root = ET.fromstring(feed_bytes)
     except ET.ParseError as exc:
@@ -77,6 +131,58 @@ def parse_latest_item(feed_bytes):
     )
 
 
+def parse_wordsmith_item(feed_bytes):
+    item = _parse_first_item(feed_bytes, "Wordsmith RSS XML")
+
+    word = clean_text(item.findtext("title", default=""))
+    definition = clean_text(item.findtext("description", default=""))
+    if not word or not definition:
+        raise WOTDError("The Wordsmith feed did not include the expected word fields.")
+
+    return WordEntry(
+        title=word,
+        definitions=[definition],
+        source="Wordsmith.org",
+    )
+
+
+def parse_idiom_item(feed_bytes):
+    item = _parse_first_item(feed_bytes, "EnglishClub RSS XML")
+
+    title = clean_text(item.findtext("title", default=""))
+    if not title:
+        raise WOTDError("The EnglishClub idiom feed did not include a title.")
+
+    meaning, examples = extract_idiom_content(item)
+    if not meaning:
+        raise WOTDError("The EnglishClub idiom feed did not include a meaning.")
+
+    return WordEntry(
+        title=title,
+        definitions=[meaning],
+        description=examples,
+        description_label="Examples",
+        source="EnglishClub",
+    )
+
+
+def _parse_first_item(feed_bytes, label):
+    try:
+        root = ET.fromstring(feed_bytes)
+    except ET.ParseError as exc:
+        raise WOTDError(f"Could not parse {label}: {exc}.") from exc
+
+    channel = root.find("channel")
+    if channel is None:
+        raise WOTDError("RSS feed is missing a channel element.")
+
+    item = channel.find("item")
+    if item is None:
+        raise WOTDError("RSS feed did not contain any items.")
+
+    return item
+
+
 def extract_definitions(item, word):
     shortdefs = [
         clean_text(shortdef.text or "")
@@ -93,6 +199,30 @@ def extract_definitions(item, word):
 def extract_description(item, word):
     description = item.findtext("description", default="")
     return "\n\n".join(_description_paragraphs(description, word))
+
+
+def extract_idiom_content(item):
+    content_html = item.findtext("content:encoded", default="", namespaces=CONTENT_NAMESPACE)
+    if content_html.strip():
+        parser = StructuredParagraphParser()
+        parser.feed(content_html)
+        parser.close()
+
+        meaning = ""
+        examples = []
+        for paragraph in parser.paragraphs:
+            label = paragraph[0].lower()
+            if label.startswith("meaning:"):
+                meaning = " ".join(paragraph[1:]) if len(paragraph) > 1 else paragraph[0][8:].strip()
+            elif label.startswith("for example:"):
+                examples.extend(paragraph[1:] if len(paragraph) > 1 else [])
+
+        if meaning:
+            return meaning, "\n".join(examples)
+
+    description = clean_text(item.findtext("description", default=""))
+    meaning, _, example_text = description.partition("Examples:")
+    return meaning.strip(), example_text.strip()
 
 
 def _description_paragraphs(description_html, word):
