@@ -10,8 +10,10 @@ The provider defines:
 
 - `language`: short code exposed in the CLI, such as `en` or `ja`
 - `source`: muted source attribution shown in output
-- `request`: a `SourceRequest` describing where and how to fetch data
+- `build_request`: a function that returns a `SourceRequest` for the selected variant
 - `parse`: a function that converts fetched bytes into a `WordEntry`
+- optional `variants`: extra suffixes such as `n1` through `n5`
+- optional `default_variant`: the suffix used when the base language code is requested
 
 ## Minimal example
 
@@ -23,12 +25,19 @@ def get_provider():
     return LanguageProvider(
         language="es",
         source="Example Source",
-        request=SourceRequest(url="https://example.com/wotd"),
+        build_request=build_request,
         parse=parse_entry,
+        variants=("easy", "hard"),
+        default_variant="easy",
     )
 
 
-def parse_entry(source_bytes):
+def build_request(variant):
+    difficulty = variant or "easy"
+    return SourceRequest(url=f"https://example.com/wotd/{difficulty}")
+
+
+def parse_entry(source_bytes, variant):
     text = source_bytes.decode("utf-8", errors="replace")
     return WordEntry(
         title="hola",
@@ -48,6 +57,8 @@ es = "wotd.languages.spanish:get_provider"
 ```
 
 The entry-point name is the language code shown in the CLI help and accepted as the positional argument.
+
+If a provider exposes variants, users can request them with `language-variant`, such as `ja-n3`.
 
 ## Output options
 

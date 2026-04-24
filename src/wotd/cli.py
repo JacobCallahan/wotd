@@ -22,7 +22,10 @@ LANGUAGE_EPILOG = (
 @click.command(epilog=LANGUAGE_EPILOG)
 @click.argument("language", required=False, default=DEFAULT_LANGUAGE, metavar=LANGUAGE_METAVAR)
 def main(language):
-    """Display the newest Word of the Day and its definition(s)."""
+    """Display the newest Word of the Day and its definition(s).
+
+    Language variants can be exposed by providers, such as `ja-n3`.
+    """
     try:
         display_language(language)
     except WOTDError as exc:
