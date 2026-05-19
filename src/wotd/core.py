@@ -97,6 +97,19 @@ def load_language_providers():
     return providers
 
 
+def _all_variant_codes(provider):
+    """Return the ordered list of language codes that `<lang>-all` expands to.
+
+    If the provider has no named default_variant (i.e. the base language maps to a
+    distinct source), the bare language code is prepended so it is included too.
+    """
+    codes = []
+    if provider.default_variant is None:
+        codes.append(provider.language)
+    codes.extend(f"{provider.language}-{v}" for v in provider.variants)
+    return codes
+
+
 def get_registered_language_codes():
     providers = load_language_providers()
     codes = []
@@ -104,6 +117,8 @@ def get_registered_language_codes():
         codes.append(provider.language)
         for variant in provider.variants:
             codes.append(f"{provider.language}-{variant}")
+        if provider.variants:
+            codes.append(f"{provider.language}-all")
     return sorted(set(codes))
 
 
@@ -120,6 +135,12 @@ def get_language_provider(language):
     base_language, separator, variant = normalized.partition("-")
     provider = providers.get(base_language)
     if provider is not None and separator:
+        if variant == "all":
+            available = ", ".join(get_registered_language_codes())
+            raise WOTDError(
+                f"'{language}' is a meta-variant; use display_language() which handles it directly."
+                f" Available languages: {available}."
+            )
         if variant in provider.variants:
             return provider, normalized, variant
 
@@ -174,6 +195,24 @@ def render_entry(entry):
 
 
 def display_language(language):
+    normalized = language.strip().lower() or DEFAULT_LANGUAGE
+    base_language, separator, variant = normalized.partition("-")
+    if separator and variant == "all":
+        providers = load_language_providers()
+        provider = providers.get(base_language)
+        if provider is None:
+            available = ", ".join(get_registered_language_codes())
+            raise WOTDError(f"Unsupported language '{language}'. Available languages: {available}.")
+        if not provider.variants:
+            available = ", ".join(get_registered_language_codes())
+            raise WOTDError(
+                f"Language '{base_language}' has no variants; '{language}' is not supported."
+                f" Available languages: {available}."
+            )
+        for code in _all_variant_codes(provider):
+            display_language(code)
+        return
+
     provider, _, variant = get_language_provider(language)
     source_bytes = fetch_source(provider.build_request(variant))
     entry = provider.parse(source_bytes, variant)

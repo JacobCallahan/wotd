@@ -25,6 +25,8 @@ def main(language):
     """Display the newest Word of the Day and its definition(s).
 
     Language variants can be exposed by providers, such as `ja-n3`.
+    Use the `<lang>-all` meta-variant to display every variant for a language at once,
+    for example `en-all` or `ja-all`.
     """
     try:
         display_language(language)
